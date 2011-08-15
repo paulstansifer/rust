@@ -739,7 +739,7 @@ fn add_new_extension(cx: &ext_ctxt, sp: span, arg: @expr,
         }
     }
 
-    let ext = bind generic_extension(_, _, _, _, clauses);
+    let ext = bind generic_extension(_, _, _, _, @clauses);
 
     ret {ident:
              alt macro_name {
@@ -753,8 +753,8 @@ fn add_new_extension(cx: &ext_ctxt, sp: span, arg: @expr,
          ext: normal(ext)};
 
     fn generic_extension(cx: &ext_ctxt, sp: span, arg: @expr,
-                         body: option::t[str], clauses: [@clause]) -> @expr {
-        for c: @clause in clauses {
+                         body: option::t[str], clauses: @[@clause]) -> @expr {
+        for c: @clause in *clauses {
             alt use_selectors_to_bind(c.params, arg) {
               some(bindings) {
                 ret transcribe(cx, bindings, c.body)
