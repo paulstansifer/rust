@@ -101,7 +101,7 @@ fn local_rhs_span(l: &@ast::local, def: &span) -> span {
     alt l.node.init { some(i) { ret i.expr.span; } _ { ret def; } }
 }
 
-fn lit_eq(l: &@ast::lit, m: &@ast::lit) -> bool {
+fn lit_eq(l: &ast::lit, m: &ast::lit) -> bool {
     alt l.node {
       ast::lit_str(s, kind_s) {
         alt m.node {

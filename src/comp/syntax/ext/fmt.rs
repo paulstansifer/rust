@@ -44,7 +44,7 @@ fn expand_syntax_ext(cx: &ext_ctxt, sp: span, arg: @ast::expr,
 fn pieces_to_expr(cx: &ext_ctxt, sp: span, pieces: &[piece],
                   args: &[@ast::expr]) -> @ast::expr {
     fn make_new_lit(cx: &ext_ctxt, sp: span, lit: ast::lit_) -> @ast::expr {
-        let sp_lit = @{node: lit, span: sp};
+        let sp_lit = {node: lit, span: sp};
         ret @{id: cx.next_id(), node: ast::expr_lit(sp_lit), span: sp};
     }
     fn make_new_str(cx: &ext_ctxt, sp: span, s: str) -> @ast::expr {

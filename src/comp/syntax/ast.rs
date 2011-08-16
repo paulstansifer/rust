@@ -131,7 +131,7 @@ type field_pat = {ident: ident, pat: @pat};
 tag pat_ {
     pat_wild;
     pat_bind(ident);
-    pat_lit(@lit);
+    pat_lit(lit);
     pat_tag(path, [@pat]);
     pat_rec([field_pat], bool);
     pat_tup([@pat]);
@@ -302,7 +302,7 @@ tag expr_ {
     expr_spawn(spawn_dom, option::t[str], @expr, [@expr]);
     expr_binary(binop, @expr, @expr);
     expr_unary(unop, @expr);
-    expr_lit(@lit);
+    expr_lit(lit);
     expr_cast(@expr, @ty);
     expr_if(@expr, blk, option::t[@expr]);
     expr_ternary(@expr, @expr, @expr);
@@ -473,7 +473,7 @@ so that the typestate pass doesn't have to map a function name onto its decl.
 So, the constr_arg type is parameterized: it's instantiated with uint for
 declarations, and ident for uses.
 */
-tag constr_arg_general_[T] { carg_base; carg_ident(T); carg_lit(@lit); }
+tag constr_arg_general_[T] { carg_base; carg_ident(T); carg_lit(lit); }
 
 type fn_constr_arg = constr_arg_general_[uint];
 type sp_constr_arg[T] = spanned[constr_arg_general_[T]];

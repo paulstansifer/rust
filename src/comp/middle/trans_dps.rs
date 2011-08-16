@@ -397,7 +397,7 @@ fn trans_path(bcx: &@block_ctxt, dest: &dest, path: &ast::path,
 fn trans_expr(bcx: &@block_ctxt, dest: &dest, expr: &@ast::expr) ->
    @block_ctxt {
     alt expr.node {
-      ast::expr_lit(lit) { trans_lit(bcx, dest, *lit); ret bcx; }
+      ast::expr_lit(lit) { trans_lit(bcx, dest, lit); ret bcx; }
       ast::expr_log(level, operand) {
         ret trans_log(bcx, expr.span, level, operand);
       }

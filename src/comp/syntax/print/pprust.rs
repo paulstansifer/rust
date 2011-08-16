@@ -1226,7 +1226,7 @@ fn print_meta_item(s: &ps, item: &@ast::meta_item) {
       ast::meta_name_value(name, value) {
         word_space(s, name);
         word_space(s, "=");
-        print_literal(s, @value);
+        print_literal(s, value);
       }
       ast::meta_list(name, items) {
         word(s.s, name);
@@ -1389,7 +1389,7 @@ fn in_cbox(s: &ps) -> bool {
     ret s.boxes.(len - 1u) == pp::consistent;
 }
 
-fn print_literal(s: &ps, lit: &@ast::lit) {
+fn print_literal(s: &ps, lit: &ast::lit) {
     maybe_print_comment(s, lit.span.lo);
     alt next_lit(s) {
       some(lt) {
@@ -1425,7 +1425,7 @@ fn print_literal(s: &ps, lit: &@ast::lit) {
     }
 }
 
-fn lit_to_str(l: &@ast::lit) -> str { be to_str(l, print_literal); }
+fn lit_to_str(l: &ast::lit) -> str { be to_str(l, print_literal); }
 
 fn next_lit(s: &ps) -> option::t[lexer::lit] {
     alt s.literals {

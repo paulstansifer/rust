@@ -23,7 +23,7 @@ import trans_common::*;
 
 // An option identifying a branch (either a literal or a tag variant)
 tag opt {
-    lit(@ast::lit);
+    lit(ast::lit);
     var(/* variant id */uint, /* variant dids */{tg: def_id, var: def_id});
 }
 fn opt_eq(a: &opt, b: &opt) -> bool {
@@ -38,7 +38,7 @@ fn opt_eq(a: &opt, b: &opt) -> bool {
 }
 fn trans_opt(bcx: &@block_ctxt, o: &opt) -> result {
     alt o {
-      lit(l) { ret trans::trans_lit(bcx, *l); }
+      lit(l) { ret trans::trans_lit(bcx, l); }
       var(id, _) { ret rslt(bcx, C_int(id as int)); }
     }
 }

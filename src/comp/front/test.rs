@@ -248,7 +248,7 @@ fn mk_test_desc_rec(cx: &test_ctxt, test: test) -> @ast::expr {
         nospan(ast::lit_str(ast::path_name_i(path), ast::sk_rc));
     let name_expr: ast::expr =
         {id: cx.next_node_id(),
-         node: ast::expr_lit(@name_lit),
+         node: ast::expr_lit(name_lit),
          span: ast::dummy_sp()};
 
     let name_field: ast::field =
@@ -269,7 +269,7 @@ fn mk_test_desc_rec(cx: &test_ctxt, test: test) -> @ast::expr {
 
     let ignore_expr: ast::expr =
         {id: cx.next_node_id(),
-         node: ast::expr_lit(@ignore_lit),
+         node: ast::expr_lit(ignore_lit),
          span: ast::dummy_sp()};
 
     let ignore_field: ast::field =

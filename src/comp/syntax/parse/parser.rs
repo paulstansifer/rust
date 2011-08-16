@@ -778,7 +778,7 @@ fn parse_bottom_expr(p: &parser) -> @ast::expr {
         if p.peek() == token::RPAREN {
             hi = p.get_hi_pos();
             p.bump();
-            let lit = @spanned(lo, hi, ast::lit_nil);
+            let lit = spanned(lo, hi, ast::lit_nil);
             ret mk_expr(p, lo, hi, ast::expr_lit(lit));
         }
         let es = ~[parse_expr(p)];
@@ -866,8 +866,8 @@ fn parse_bottom_expr(p: &parser) -> @ast::expr {
           token::LIT_STR(s) {
             p.bump();
             let lit =
-                @{node: ast::lit_str(p.get_str(s), ast::sk_unique),
-                  span: p.get_span()};
+                {node: ast::lit_str(p.get_str(s), ast::sk_unique),
+                 span: p.get_span()};
             ex = ast::expr_lit(lit);
           }
           _ { ex = ast::expr_uniq(parse_expr(p)); }
@@ -1020,7 +1020,7 @@ fn parse_bottom_expr(p: &parser) -> @ast::expr {
     } else {
         let lit = parse_lit(p);
         hi = lit.span.hi;
-        ex = ast::expr_lit(@lit);
+        ex = ast::expr_lit(lit);
     }
     ret mk_expr(p, lo, hi, ex);
 }
@@ -1111,7 +1111,7 @@ fn parse_prefix_expr(p: &parser) -> @ast::expr {
     // FIXME: can only remove this sort of thing when both typestate and
     // alt-exhaustive-match checking are co-operating.
 
-    let lit = @spanned(lo, lo, ast::lit_nil);
+    let lit = spanned(lo, lo, ast::lit_nil);
     let ex: ast::expr_ = ast::expr_lit(lit);
     alt p.peek() {
       token::NOT. {
@@ -1478,8 +1478,7 @@ fn parse_pat(p: &parser) -> @ast::pat {
         if p.peek() == token::RPAREN {
             hi = p.get_hi_pos();
             p.bump();
-            pat = ast::pat_lit(@{node: ast::lit_nil,
-                                 span: ast::mk_sp(lo,hi)});
+            pat = ast::pat_lit({node: ast::lit_nil, span: ast::mk_sp(lo,hi)});
         } else {
             let fields = ~[parse_pat(p)];
             while p.peek() == token::COMMA {
@@ -1496,7 +1495,7 @@ fn parse_pat(p: &parser) -> @ast::pat {
         if !is_ident(tok) || is_word(p, "true") || is_word(p, "false") {
             let lit = parse_lit(p);
             hi = lit.span.hi;
-            pat = ast::pat_lit(@lit);
+            pat = ast::pat_lit(lit);
         } else if (is_plain_ident(p) &&
                        alt p.look_ahead(1u) {
                          token::DOT. | token::LPAREN. | token::LBRACKET. {

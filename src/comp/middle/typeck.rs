@@ -1306,7 +1306,7 @@ fn gather_locals(ccx: &@crate_ctxt, f: &ast::_fn, id: &ast::node_id,
 }
 
 // AST fragment checking
-fn check_lit(ccx: @crate_ctxt, lit: &@ast::lit) -> ty::t {
+fn check_lit(ccx: @crate_ctxt, lit: &ast::lit) -> ty::t {
     alt lit.node {
       ast::lit_str(_, ast::sk_rc.) { ret ty::mk_str(ccx.tcx); }
       ast::lit_str(_, ast::sk_unique.) { ret ty::mk_istr(ccx.tcx); }

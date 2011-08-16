@@ -123,7 +123,7 @@ fn expr_to_ident(cx: &ext_ctxt, expr: @ast::expr, error: str) -> ast::ident {
 
 fn make_new_lit(cx: &ext_ctxt, sp: codemap::span, lit: ast::lit_) ->
    @ast::expr {
-    let sp_lit = @{node: lit, span: sp};
+    let sp_lit = {node: lit, span: sp};
     ret @{id: cx.next_id(), node: ast::expr_lit(sp_lit), span: sp};
 }
 

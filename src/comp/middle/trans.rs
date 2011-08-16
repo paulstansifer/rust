@@ -4997,7 +4997,7 @@ fn trans_expr_out(cx: &@block_ctxt, e: &@ast::expr, output: out_method) ->
    result {
     // FIXME Fill in cx.sp
     alt e.node {
-      ast::expr_lit(lit) { ret trans_lit(cx, *lit); }
+      ast::expr_lit(lit) { ret trans_lit(cx, lit); }
       ast::expr_unary(op, x) {
         if op != ast::deref { ret trans_unary(cx, op, x, e.id); }
       }
@@ -6246,7 +6246,7 @@ fn trans_tag_variant(cx: @local_ctxt, tag_id: ast::node_id,
 // that does so later on?
 fn trans_const_expr(cx: &@crate_ctxt, e: @ast::expr) -> ValueRef {
     alt e.node {
-      ast::expr_lit(lit) { ret trans_crate_lit(cx, *lit); }
+      ast::expr_lit(lit) { ret trans_crate_lit(cx, lit); }
       _ { cx.sess.span_unimpl(e.span, "consts that's not a plain literal"); }
     }
 }
