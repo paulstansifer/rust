@@ -9,8 +9,8 @@ import codemap::span;
 import codemap::filename;
 
 tag ast_node {
-    branch(node_name, option::t[span], (@ast_node)[]);
-    i_seq((@ast_node)[]);
+    branch(node_name, option::t[span], [@ast_node]);
+    i_seq([@ast_node]);
     i_opt(option::t[@ast_node]);
     l_bool(bool);
     l_ident(ident);
@@ -35,19 +35,18 @@ tag ast_node {
     l_char(char);
     l_int(int);
     l_uint(uint);
-    l_spawn_dom;
-    l_check_mode;
-    l_seq_kind;
-    l_ty_mach;
-    l_purity;
-    l_controlflow;
-    l_attr_style;
-
+    l_seq_kind(seq_kind);
+    l_spawn_dom(spawn_dom);
+    l_ty_mach(ty_mach);
+    l_controlflow(controlflow);
+    l_attr_style(attr_style);
+    l_check_mode(check_mode);
+    l_purity(purity);
     // these could be avoided, at the cost of making #br_* more convoluted
     l_optional_filename(option::t[filename]);
     l_optional_string(option::t[str]);
-    l_seq_ident(ident[]);
-    l_seq_ty_param(ty_param[]);
+    l_seq_ident([ident]);
+    l_seq_ty_param([ty_param]);
 
 }
 
@@ -285,7 +284,9 @@ fn dummy() {
            ]];
 
     // this wackiness is just because we need indices
-    #macro[[#br_alt_core[ctx, sp, ctor, kids, offset, [h, more_hs, ...],
+    #macro[[#br_alt_core[ctx, sp, ctor, kids, offset, [], []],
+            ctor], //special case, for the syntax special case for empty tags
+           [#br_alt_core[ctx, sp, ctor, kids, offset, [h, more_hs, ...],
                          [accum, ...]],
             #br_alt_core[ctx, sp, ctor, kids, offset+1u, [more_hs, ...],
                          [accum, ...,
@@ -357,7 +358,11 @@ fn dummy() {
 
     #macro[ //keywords would make these two nicer:
         [#extract_elt[ctx, sp, elts, idx, []], ctx.next_id()],
-        [#extract_elt[ctx, cp, elts, idx, [[]]], sp],
+        [#extract_elt[ctx, sp, elts, idx, [[]]], 
+         alt sp {
+               some(s) { s }
+               none. { ctx.ff(none, "needed a span"); }
+             }],
         [#extract_elt[ctx, sp, elts, idx, [leaf_destructure]],
          alt *elts.(idx) {
            leaf_destructure(x) { x }
@@ -370,9 +375,9 @@ fn dummy() {
          extract_fn(ctx, elts.(idx))]];
 }
 
-fn seq_cv[T](conversion: fn (&ctx, &@ast_node) -> T)
-    -> fn (&ctx, @ast_node) -> T[] {
-    ret lambda(ctx: &ctx, ut: @ast_node) -> T[] {
+fn seq_cv[@T](conversion: fn (&ctx, &@ast_node) -> T)
+    -> fn (&ctx, &@ast_node) -> [T] {
+    ret lambda(ctx: &ctx, ut: &@ast_node) -> [T] {
         ret alt *ut {
           i_seq(uts) { map(bind conversion(ctx, _), uts) }
           branch(_, sp, _) {
@@ -383,9 +388,9 @@ fn seq_cv[T](conversion: fn (&ctx, &@ast_node) -> T)
     }
 }
 
-fn opt_cv[T](conversion: fn (&ctx, &@ast_node) -> T)
-    -> fn (&ctx, @ast_node) -> option::t[T] {
-    ret lambda(ctx: &ctx, ut: @ast_node) -> option::t[T] {
+fn opt_cv[@T](conversion: fn (&ctx, &@ast_node) -> T)
+    -> fn (&ctx, &@ast_node) -> option::t[T] {
+    ret lambda(ctx: &ctx, ut: &@ast_node) -> option::t[T] {
         ret alt *ut {
           i_opt(ut_maybe) { option::map(bind conversion(ctx, _), ut_maybe) }
           branch(_, sp, _) {
@@ -440,7 +445,7 @@ fn cv_meta_item(ctx: &ctx, ut: &@ast_node) -> @meta_item {
 fn cv_blk(ctx: &ctx, ut: &@ast_node) -> blk {
     ret #br_rec[*ut, ctx, blk, n_blk,
                 [[stmts, seq_cv(cv_stmt)],
-                 [expr,  opt_cv(cv_stmt)],
+                 [expr,  opt_cv(cv_expr)],
                  [id,    [l_node_id]]]];
 }
 
@@ -448,22 +453,23 @@ fn cv_pat(ctx: &ctx, ut: &@ast_node) -> @pat {
     ret @{id: ctx.next_id(),
           node: #br_alt_no_span
               [*ut, ctx,
+               //FIXME: _tup and _lit are missing
                [[pat_wild, n_pat_wild, []],
                 [pat_bind, n_pat_bind, [[l_ident]]],
-                [pat_tag, n_pat_tag,   [[l_ident], seq_cv(cv_pat)]],
+                [pat_tag, n_pat_tag,   [[l_path], seq_cv(cv_pat)]],
                 [pat_rec, n_pat_rec,   [seq_cv(cv_field_pat),
                                         [l_bool]]],
                 [pat_box, n_pat_box,   [cv_pat]]]],
           span: alt *ut {
             branch(_,some(sp),_) { sp }
-            none. { ctx.ff("pat needs a span"); }
+            _ { ctx.ff(none, "pat needs a span"); }
           }
          }
 }
 
 fn cv_field_pat(ctx: &ctx, ut: &@ast_node) -> field_pat {
-    ret #br_rec[*ut, ctx, field_pat, n_field_pat,
-                [[ident, [l_ident]], [pat, cv_pat]]];
+    ret #br_rec_no_span[*ut, ctx, field_pat, n_field_pat,
+                        [[ident, [l_ident]], [pat, cv_pat]]];
 }
 
 fn cv_stmt(ctx: &ctx, ut: &@ast_node) -> @stmt {
@@ -475,14 +481,13 @@ fn cv_stmt(ctx: &ctx, ut: &@ast_node) -> @stmt {
 }
 
 fn cv_initializer(ctx: &ctx, ut: &@ast_node) -> initializer {
-    ret #br_rec[*ut, ctx, initializer, n_initializer,
-               [[op,   [l_init_op]],
-                [expr, cv_expr]]];
+    ret #br_rec_no_span[*ut, ctx, initializer, n_initializer,
+                        [[op,   [l_init_op]], [expr, cv_expr]]];
 }
 
 fn cv_local(ctx: &ctx, ut: &@ast_node) -> @local {
     ret @#br_rec[*ut, ctx, local, n_local,
-                 [[ty,   opt_cv(cv_ty)],
+                 [[ty,   cv_ty],
                   [pat,  cv_pat],
                   [init, opt_cv(cv_initializer)],
                   [id,   []]]]
@@ -490,14 +495,14 @@ fn cv_local(ctx: &ctx, ut: &@ast_node) -> @local {
 
 fn cv_decl(ctx: &ctx, ut: &@ast_node) -> @decl {
     ret @#br_alt[*ut, ctx,
-                 [[decl_local, n_decl_local, [cv_local]],
+                 [[decl_local, n_decl_local, [seq_cv(cv_local)]],
                   [decl_item, n_decl_item, [cv_item]]]];
 }
 
 fn cv_arm(ctx: &ctx, ut: &@ast_node) -> arm {
-    ret #br_rec[*ut, ctx, arm, n_arm,
-                [[pats, seq_cv(cv_pat)],
-                 [body, cv_blk]]];
+    ret #br_rec_no_span[*ut, ctx, arm, n_arm,
+                        [[pats, seq_cv(cv_pat)],
+                         [body, cv_blk]]];
 }
 
 fn cv_field(ctx: &ctx, ut: &@ast_node) -> field {
@@ -535,7 +540,7 @@ fn cv_expr(ctx: &ctx, ut: &@ast_node) -> @expr {
                 [expr_do_while, n_expr_do_while, [cv_blk, cv_expr]],
                 [expr_alt, n_expr_alt, [cv_expr, seq_cv(cv_arm)]],
                 [expr_fn, n_expr_fn, [cv__fn]],
-                [expr_block, n_expr_block, [cv_expr]],
+                [expr_block, n_expr_block, [cv_blk]],
                 [expr_move, n_expr_move, [cv_expr, cv_expr]],
                 [expr_assign, n_expr_assign, [cv_expr, cv_expr]],
                 [expr_swap, n_expr_swap, [cv_expr, cv_expr]],
@@ -552,34 +557,35 @@ fn cv_expr(ctx: &ctx, ut: &@ast_node) -> @expr {
                 [expr_ret, n_expr_ret, [opt_cv(cv_expr)]],
                 [expr_put, n_expr_put, [opt_cv(cv_expr)]],
                 [expr_be, n_expr_be, [cv_expr]],
-                [expr_log, n_expr_log, [cv_expr]],
+                [expr_log, n_expr_log, [[l_int], cv_expr]],
                 [expr_assert, n_expr_assert, [cv_expr]],
-                [expr_check, n_expr_check, [cv_expr]],
+                [expr_check, n_expr_check, [[l_check_mode], cv_expr]],
                 [expr_if_check, n_expr_if_check,
                  [cv_expr, cv_blk, opt_cv(cv_expr)]],
-                [expr_port, n_expr_port, [opt_cv(cv_ty)]],
+                [expr_port, n_expr_port, [cv_ty]],
                 [expr_chan, n_expr_chan, [cv_expr]],
                 [expr_anon_obj, n_expr_anon_obj, [cv_anon_obj]]]
+               //TODO: expr_uniq, expr_tup
               ],
           span: alt *ut {
             branch(_,some(sp),_) { sp }
-            none. { ctx.ff("pat needs a span"); }
+            _ { ctx.ff(none, "pat needs a span"); }
           }
          }
 }
 
 
-fn cv_lit(ctx: &ctx, ut: &@ast_node) -> @lit {
-    ret @#br_alt[*ut, ctx,
-                 [[lit_str, n_lit_str, [[l_str], [l_seq_kind]]],
-                  [lit_char, n_lit_char, [[l_char]]],
-                  [lit_int, n_lit_int, [[l_int]]],
-                  [lit_uint, n_lit_uint, [[l_uint]]],
-                  [lit_mach_int, n_lit_mach_int, [[l_ty_mach], [l_int]]],
-                  [lit_float, n_lit_float, [[l_str]]],
-                  [lit_mach_float, n_lit_mach_float, [[l_ty_mach], [l_str]]],
-                  [lit_nil, n_lit_nil, []],
-                  [lit_bool, n_lit_bool, [[l_bool]]]]];
+fn cv_lit(ctx: &ctx, ut: &@ast_node) -> lit {
+    ret #br_alt[*ut, ctx,
+                [[lit_str, n_lit_str, [[l_str], [l_seq_kind]]],
+                 [lit_char, n_lit_char, [[l_char]]],
+                 [lit_int, n_lit_int, [[l_int]]],
+                 [lit_uint, n_lit_uint, [[l_uint]]],
+                 [lit_mach_int, n_lit_mach_int, [[l_ty_mach], [l_int]]],
+                 [lit_float, n_lit_float, [[l_str]]],
+                 [lit_mach_float, n_lit_mach_float, [[l_ty_mach], [l_str]]],
+                 [lit_nil, n_lit_nil, []],
+                 [lit_bool, n_lit_bool, [[l_bool]]]]];
 }
 
 fn cv_mt(ctx: &ctx, ut: &@ast_node) -> mt {
@@ -627,39 +633,41 @@ fn cv_ty(ctx: &ctx, ut: &@ast_node) -> @ty {
                   [ty_chan, n_ty_chan, [cv_ty]],
                   [ty_rec, n_ty_rec, [seq_cv(cv_ty_field)]],
                   [ty_fn, n_ty_fn,
-                   [[l_proto], seq_cv(cv_arg), cv_ty, [l_controlflow],
+                   [[l_proto], seq_cv(cv_ty_arg), cv_ty, [l_controlflow],
                     seq_cv(cv_constr)]],
                   [ty_obj, n_ty_obj, [seq_cv(cv_ty_method)]],
                   [ty_path, n_ty_path, [[l_path], [] /*node_id*/]],
                   [ty_type, n_ty_type, []],
-                  [ty_constr, n_ty_constr, [cv_ty, seq_cv(cv_constr)]]]]
+                  [ty_constr, n_ty_constr, [cv_ty, seq_cv(cv_ty_constr)]]]]
 }
 
 /* these four are expanded from the type-parametric code in ast.rs */
 
-fn cv_carg_uint(ctx: &ctx, ut: &@ast_node) -> constr_arg_general_[uint] {
-    ret #br_alt[*ut, ctx,
-                [[carg_base, n_carg_base, []],
-                 [carg_ident, n_carg_ident, [[l_uint]]],
-                 [carg_lit, n_carg_lit, [cv_lit]]]];
+fn cv_carg_uint(ctx: &ctx, ut: &@ast_node)
+    -> @spanned[constr_arg_general_[uint]] {
+    ret @#br_alt[*ut, ctx,
+                 [[carg_base, n_carg_base, []],
+                  [carg_ident, n_carg_ident, [[l_uint]]],
+                  [carg_lit, n_carg_lit, [cv_lit]]]];
 }
-fn cv_carg_path(ctx: &ctx, ut: &@ast_node) -> constr_arg_general_[path] {
-    ret #br_alt[*ut, ctx,
-                [[carg_base, n_carg_base, []],
-                 [carg_ident, n_carg_ident, [[l_path]]],
-                 [carg_lit, n_carg_lit, [cv_lit]]]];
+fn cv_carg_path(ctx: &ctx, ut: &@ast_node)
+    -> @spanned[constr_arg_general_[path]] {
+    ret @#br_alt[*ut, ctx,
+                 [[carg_base, n_carg_base, []],
+                  [carg_ident, n_carg_ident, [[l_path]]],
+                  [carg_lit, n_carg_lit, [cv_lit]]]];
 }
 
 fn cv_constr(ctx: &ctx, ut: &@ast_node) -> @constr {
     ret @#br_rec[*ut, ctx, constr, n_constr,
                  [[path, [l_path]],
-                  [args, cv_carg_uint],
+                  [args, seq_cv(cv_carg_uint)],
                   [id, [] /*node_id*/]]];
 }
-fn cv_typed_constr(ctx: &ctx, ut: &@ast_node) -> @ty_constr {
+fn cv_ty_constr(ctx: &ctx, ut: &@ast_node) -> @ty_constr {
     ret @#br_rec[*ut, ctx, ty_constr, n_ty_constr_theactualconstraint,
                  [[path, [l_path]],
-                  [args, cv_carg_path],
+                  [args, seq_cv(cv_carg_path)],
                   [id, [] /*node_id*/]]];
 }
 
@@ -676,6 +684,7 @@ fn cv_fn_decl(ctx: &ctx, ut: &@ast_node) -> fn_decl {
     ret #br_rec_no_span[*ut, ctx, fn_decl, n_fn_decl,
                         [[inputs, seq_cv(cv_arg)],
                          [output, cv_ty],
+                         [purity, [l_purity]],
                          [il, [l_inlineness]],
                          [cf, [l_controlflow]],
                          [constraints, seq_cv(cv_constr)]]];
@@ -696,20 +705,20 @@ fn cv_method(ctx: &ctx, ut: &@ast_node) -> @method {
 }
 
 fn cv_obj_field(ctx: &ctx, ut: &@ast_node) -> obj_field {
-    ret #br_rec[*ut, ctx, obj_field, n_obj_field,
-                [[mut, [l_mutability]],
-                 [ty, cv_ty],
-                 [ident, [l_ident]],
-                 [id, [] /*node_id*/]]];
+    ret #br_rec_no_span[*ut, ctx, obj_field, n_obj_field,
+                        [[mut, [l_mutability]],
+                         [ty, cv_ty],
+                         [ident, [l_ident]],
+                         [id, [] /*node_id*/]]];
 }
 
 fn cv_anon_obj_field(ctx: &ctx, ut: &@ast_node) -> anon_obj_field {
-    ret #br_rec[*ut, ctx, anon_obj_field, n_anon_obj_field,
-                [[mut, [l_mutability]],
-                 [ty, cv_ty],
-                 [expr, cv_expr],
-                 [ident, [l_ident]],
-                 [id, [] /*node_id*/]]];
+    ret #br_rec_no_span[*ut, ctx, anon_obj_field, n_anon_obj_field,
+                        [[mut, [l_mutability]],
+                         [ty, cv_ty],
+                         [expr, cv_expr],
+                         [ident, [l_ident]],
+                         [id, [] /*node_id*/]]];
 }
 
 fn cv__obj(ctx: &ctx, ut: &@ast_node) ->  _obj {
@@ -736,7 +745,7 @@ fn cv_native_mod(ctx: &ctx, ut: &@ast_node) -> native_mod {
                         [[native_name, [l_str]],
                          [abi, [l_native_abi]],
                          [view_items, seq_cv(cv_view_item)],
-                         [items, seq_cv(cv_item)]]];
+                         [items, seq_cv(cv_native_item)]]];
 }
 
 fn cv_variant_arg(ctx: &ctx, ut: &@ast_node) -> variant_arg {
@@ -774,12 +783,12 @@ fn cv_attribute(ctx: &ctx, ut: &@ast_node) -> attribute {
    components get separate handling */
 
 fn cv_item(ctx: &ctx, ut: &@ast_node) -> @item {
-    ret @#br_rec[*ut, ctx, item, n_item,
-                 [[ident, [l_ident]],
-                  [attrs, seq_cv(cv_attribute)],
-                  [id, [] /*node_id*/],
-                  [node, cv_item_],
-                  [span, [[]] /*span*/]]];
+    ret @#br_rec_no_span[*ut, ctx, item, n_item,
+                         [[ident, [l_ident]],
+                          [attrs, seq_cv(cv_attribute)],
+                          [id, [] /*node_id*/],
+                          [node, cv_item_],
+                          [span, [[]] /*span*/]]];
 }
 
 fn cv_item_(ctx: &ctx, ut: &@ast_node) -> item_ {
@@ -800,17 +809,18 @@ fn cv_item_(ctx: &ctx, ut: &@ast_node) -> item_ {
 }
 
 fn cv_native_item(ctx: &ctx, ut: &@ast_node) -> @native_item {
-    ret @#br_rec[*ut, ctx, native_item, n_native_item,
-                 [[ident, [l_ident]],
-                  [attrs, seq_cv(cv_attribute)],
-                  [node, cv_native_item_],
-                  [id, [] /*node_id*/],
-                  [span, [[]] /*span*/]]];
+    ret @#br_rec_no_span[*ut, ctx, native_item, n_native_item,
+                         [[ident, [l_ident]],
+                          [attrs, seq_cv(cv_attribute)],
+                          [node, cv_native_item_],
+                          [id, [] /*node_id*/],
+                          [span, [[]] /*span*/]]];
 }
 
 fn cv_native_item_(ctx: &ctx, ut: &@ast_node) -> native_item_ {
-    ret #br_alt[*ut, ctx,
-                [[native_item_ty, n_native_item_ty, []],
-                 [native_item_fn, n_native_item_fn,
-                  [[l_optional_string], cv_fn_decl, [l_seq_ty_param]]]]];
+    ret #br_alt_no_span[*ut, ctx,
+                        [[native_item_ty, n_native_item_ty, []],
+                         [native_item_fn, n_native_item_fn,
+                          [[l_optional_string], cv_fn_decl, 
+                           [l_seq_ty_param]]]]];
 }
