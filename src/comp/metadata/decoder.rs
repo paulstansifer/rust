@@ -334,7 +334,7 @@ fn get_attributes(md: &ebml::doc) -> [ast::attribute] {
             assert (ivec::len(meta_items) == 1u);
             let meta_item = meta_items.(0);
             attrs +=
-                ~[{node: {style: ast::attr_outer, value: *meta_item},
+                ~[{node: {style: ast::attr_outer, value: meta_item},
                    span: ast::dummy_sp()}];
         }
       }

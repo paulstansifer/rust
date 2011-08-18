@@ -2185,7 +2185,7 @@ fn parse_attribute_naked(p: &parser, style: ast::attr_style, lo: uint) ->
     let meta_item = parse_meta_item(p);
     expect(p, token::RBRACKET);
     let hi = p.get_hi_pos();
-    ret spanned(lo, hi, {style: style, value: *meta_item});
+    ret spanned(lo, hi, {style: style, value: meta_item});
 }
 
 // Parse attributes that appear after the opening of an item, each terminated

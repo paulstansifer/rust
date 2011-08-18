@@ -54,7 +54,7 @@ fn find_attrs_by_name(attrs: &[ast::attribute], name: ast::ident) ->
 }
 
 fn get_attr_name(attr: &ast::attribute) -> ast::ident {
-    get_meta_item_name(@attr.node.value)
+    get_meta_item_name(attr.node.value)
 }
 
 fn find_meta_items_by_name(metas: &[@ast::meta_item], name: ast::ident) ->
@@ -91,7 +91,7 @@ fn get_meta_item_value_str(meta: &@ast::meta_item) -> option::t[str] {
     }
 }
 
-fn attr_meta(attr: &ast::attribute) -> @ast::meta_item { @attr.node.value }
+fn attr_meta(attr: &ast::attribute) -> @ast::meta_item { attr.node.value }
 
 // Get the meta_items from inside a vector of attributes
 fn attr_metas(attrs: &[ast::attribute]) -> [@ast::meta_item] {
@@ -212,7 +212,7 @@ fn mk_word_item(name: ast::ident) -> @ast::meta_item {
 }
 
 fn mk_attr(item: @ast::meta_item) -> ast::attribute {
-    ret span({style: ast::attr_inner, value: *item});
+    ret span({style: ast::attr_inner, value: item});
 }
 
 //

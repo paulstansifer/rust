@@ -122,7 +122,7 @@ fn fold_meta_item_(mi: &@meta_item, fld: ast_fold) -> @meta_item {
 //used in noop_fold_item and noop_fold_crate
 fn fold_attribute_(at: &attribute, fmi: fn(&@meta_item) -> @meta_item ) ->
    attribute {
-    ret {node: {style: at.node.style, value: *fmi(@at.node.value)},
+    ret {node: {style: at.node.style, value: fmi(at.node.value)},
          span: at.span};
 }
 //used in noop_fold_native_item and noop_fold_fn
@@ -161,7 +161,7 @@ fn noop_fold_crate(c: &crate_, fld: ast_fold) -> crate_ {
 }
 
 fn noop_fold_crate_directive(cd: &crate_directive_, fld: ast_fold) ->
-   crate_directive_ {
+    crate_directive_ {
     ret alt cd {
           cdir_src_mod(id, fname, attrs) {
             cdir_src_mod(fld.fold_ident(id), fname, attrs)

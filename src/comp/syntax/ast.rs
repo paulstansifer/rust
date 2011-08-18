@@ -584,7 +584,7 @@ type attribute = spanned[attribute_];
 // distinguished for pretty-printing.
 tag attr_style { attr_outer; attr_inner; }
 
-type attribute_ = {style: attr_style, value: meta_item};
+type attribute_ = {style: attr_style, value: @meta_item};
 
 type item =  // For objs and resources, this is the type def_id
     {ident: ident, attrs: [attribute], id: node_id, node: item_, span: span};

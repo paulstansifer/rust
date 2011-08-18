@@ -438,7 +438,7 @@ fn write_int(writer: &io::writer, n: &int) {
     writer.write_be_uint(n as uint, 4u);
 }
 
-fn encode_meta_item(ebml_w: &ebml::writer, mi: &meta_item) {
+fn encode_meta_item(ebml_w: &ebml::writer, mi: &@meta_item) {
     alt mi.node {
       meta_word(name) {
         ebml::start_tag(ebml_w, tag_meta_item_word);
@@ -468,7 +468,7 @@ fn encode_meta_item(ebml_w: &ebml::writer, mi: &meta_item) {
         ebml_w.writer.write(str::bytes(name));
         ebml::end_tag(ebml_w);
         for inner_item: @meta_item  in items {
-            encode_meta_item(ebml_w, *inner_item);
+            encode_meta_item(ebml_w, inner_item);
         }
         ebml::end_tag(ebml_w);
       }

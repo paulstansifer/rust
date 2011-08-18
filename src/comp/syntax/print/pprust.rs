@@ -563,7 +563,7 @@ fn print_attribute(s: &ps, attr: &ast::attribute) {
     hardbreak_if_not_bol(s);
     maybe_print_comment(s, attr.span.lo);
     word(s.s, "#[");
-    print_meta_item(s, @attr.node.value);
+    print_meta_item(s, attr.node.value);
     word(s.s, "]");
 }
 
