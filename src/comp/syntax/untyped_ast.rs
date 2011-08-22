@@ -69,7 +69,9 @@ tag node_name {
 
     n_blk;
 
-    //pat: (be sure to add node_id)
+    //pat:
+    n_pat;
+    //pat_: (be sure to add node_id)
     n_pat_wild;
     n_pat_bind;
     n_pat_lit;

@@ -356,6 +356,15 @@ tag mac_ {
     mac_ellipsis;
 }
 
+/* new, will replace `mac`, will be placed in a side table */
+
+tag meta_syntax_ {
+    meta_syntax_invoc(path, @expr, option::t[str]);
+    meta_syntax_embed_ty(@ty);
+    meta_syntax_embed_block(blk);
+    meta_syntax_ellipsis;
+}
+
 type lit = spanned[lit_];
 
 tag lit_ {
