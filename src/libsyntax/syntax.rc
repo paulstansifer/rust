@@ -28,6 +28,7 @@ mod util {
 mod parse {
     export parser;
     export lexer;
+    export token;
     export comments;
     export prec;
     export classify;

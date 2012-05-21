@@ -4,7 +4,7 @@ import std::map::{hashmap, str_hash};
 import token::{can_begin_expr, is_ident, is_plain_ident};
 import codemap::{span,fss_none};
 import util::interner;
-import ast_util::{spanned, mk_sp, ident_to_path, operator_prec};
+import ast_util::{spanned, respan, mk_sp, ident_to_path, operator_prec};
 import ast::*;
 import lexer::reader;
 import prec::{as_prec, token_to_binop};
@@ -1035,6 +1035,32 @@ class parser {
     }
     ret e;
 }
+
+    fn parse_token_tree() -> token_tree {
+        #[doc="what's the opposite delimiter?"]
+        fn flip(t: token::token) -> token::token {
+            alt t {
+              token::LPAREN { token::RPAREN }
+              token::LBRACE { token::RBRACE }
+              token::LBRACKET { token::RBRACKET }
+              _ { fail }
+            }
+        }
+        ret alt self.token {
+          token::LPAREN | token::LBRACE | token::LBRACKET {
+            let sp_kids = self.parse_seq(self.token, flip(self.token),
+                                         seq_sep_none(),
+                                         {|p| p.parse_token_tree()});
+            respan(sp_kids.span, tt_delim(self.token, sp_kids.node))
+          }
+          _ {
+            let lo = self.span.lo;
+            self.bump();
+            spanned(lo, self.span.hi, tt_flat(self.token))
+          }
+        };
+    }
+
 
     fn parse_prefix_expr() -> pexpr {
         let lo = self.span.lo;
