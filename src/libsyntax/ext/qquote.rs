@@ -5,6 +5,7 @@ import visit::*;
 import ext::base::*;
 import ext::build::*;
 import parse::parser;
+import parse::lexer::{reader,lexer};
 import parse::parser::parse_from_source_str;
 import dvec::{dvec, extensions};
 
@@ -163,13 +164,13 @@ fn expand_ast(ecx: ext_ctxt, _sp: span,
     };
 }
 
-fn parse_crate(p: parser) -> @ast::crate { p.parse_crate_mod([]) }
-fn parse_ty(p: parser) -> @ast::ty { p.parse_ty(false) }
-fn parse_stmt(p: parser) -> @ast::stmt { p.parse_stmt([]) }
-fn parse_expr(p: parser) -> @ast::expr { p.parse_expr() }
-fn parse_pat(p: parser) -> @ast::pat { p.parse_pat() }
+fn parse_crate(p: parser<reader>) -> @ast::crate { p.parse_crate_mod([]) }
+fn parse_ty(p: parser<reader>) -> @ast::ty { p.parse_ty(false) }
+fn parse_stmt(p: parser<reader>) -> @ast::stmt { p.parse_stmt([]) }
+fn parse_expr(p: parser<reader>) -> @ast::expr { p.parse_expr() }
+fn parse_pat(p: parser<reader>) -> @ast::pat { p.parse_pat() }
 
-fn parse_item(p: parser) -> @ast::item {
+fn parse_item(p: parser<reader>) -> @ast::item {
     alt p.parse_item([], ast::public) {
       some(item) { item }
       none       { fail "parse_item: parsing an item failed"; }
@@ -177,7 +178,7 @@ fn parse_item(p: parser) -> @ast::item {
 }
 
 fn finish<T: qq_helper>
-    (ecx: ext_ctxt, body: ast::mac_body_, f: fn (p: parser) -> T)
+    (ecx: ext_ctxt, body: ast::mac_body_, f: fn (p: parser<reader>) -> T)
     -> @ast::expr
 {
     let cm = ecx.codemap();

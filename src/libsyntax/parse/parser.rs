@@ -6,11 +6,12 @@ import codemap::{span,fss_none};
 import util::interner;
 import ast_util::{spanned, respan, mk_sp, ident_to_path, operator_prec};
 import ast::*;
-import lexer::reader;
+import lexer::{reader, lexer};
 import prec::{as_prec, token_to_binop};
 import attr::parser_attr;
 import common::*;
 import dvec::{dvec, extensions};
+import attr::attr_or_ext; //temporary; remove when #2445 is fixed
 
 export file_type;
 export parser;
@@ -24,10 +25,9 @@ export parse_pat;
 import parse_from_source_str;
 export parse_from_source_str;
 
-// TODO: remove these once we go around a snapshot cycle.
-// These are here for the old way that #ast (qquote.rs) worked
-fn parse_expr(p: parser) -> @ast::expr { p.parse_expr() }
-fn parse_pat(p: parser) -> @ast::pat { p.parse_pat() }
+//these are for qquote
+fn parse_expr(p: parser<reader>) -> @ast::expr { p.parse_expr() }
+fn parse_pat(p: parser<reader>) -> @ast::pat { p.parse_pat() }
 
 
 enum restriction {
@@ -62,7 +62,7 @@ enum class_contents { ctor_decl(fn_decl, blk, codemap::span),
 type arg_or_capture_item = either<arg, capture_item>;
 type item_info = (ident, item_, option<[attribute]>);
 
-class parser {
+class parser<L: lexer> {
     let sess: parse_sess;
     let cfg: crate_cfg;
     let file_type: file_type;
@@ -71,14 +71,14 @@ class parser {
     let mut last_span: span;
     let buffer: dvec<{tok: token::token, span: span}>;
     let mut restriction: restriction;
-    let reader: reader;
+    let reader: L;
     let keywords: hashmap<str, ()>;
     let restricted_keywords: hashmap<str, ()>;
 
-    new(sess: parse_sess, cfg: ast::crate_cfg, rdr: reader,
-        ftype: file_type) {
-        let tok0 = lexer::next_token(rdr);
-        let span0 = ast_util::mk_sp(tok0.chpos, rdr.chpos);
+    new(sess: parse_sess, cfg: ast::crate_cfg, +rdr: L, ftype: file_type) {
+        self.reader <- rdr;
+        let tok0 = self.reader.next_token();
+        let span0 = ast_util::mk_sp(tok0.chpos, self.reader.chpos());
         self.sess = sess;
         self.cfg = cfg;
         self.file_type = ftype;
@@ -87,7 +87,6 @@ class parser {
         self.last_span = span0;
         self.buffer = dvec::dvec();
         self.restriction = UNRESTRICTED;
-        self.reader = rdr;
         self.keywords = token::keyword_table();
         self.restricted_keywords = token::restricted_keyword_table();
     }
@@ -98,9 +97,9 @@ class parser {
     fn bump() {
         self.last_span = self.span;
         if self.buffer.len() == 0u {
-            let next = lexer::next_token(self.reader);
+            let next = self.reader.next_token();
             self.token = next.tok;
-            self.span = mk_sp(next.chpos, self.reader.chpos);
+            self.span = mk_sp(next.chpos, self.reader.chpos());
         } else {
             let next = self.buffer.shift();
             self.token = next.tok;
@@ -113,8 +112,8 @@ class parser {
     }
     fn look_ahead(distance: uint) -> token::token {
         while self.buffer.len() < distance {
-            let next = lexer::next_token(self.reader);
-            let sp = mk_sp(next.chpos, self.reader.chpos);
+            let next = self.reader.next_token();
+            let sp = mk_sp(next.chpos, self.reader.chpos());
             self.buffer.push({tok: next.tok, span: sp});
         }
         ret self.buffer[distance - 1u].tok;
@@ -132,7 +131,7 @@ class parser {
         self.sess.span_diagnostic.span_warn(self.span, m)
     }
     fn get_str(i: token::str_num) -> str {
-        interner::get(*self.reader.interner, i)
+        interner::get(*self.reader.interner(), i)
     }
     fn get_id() -> node_id { next_node_id(self.sess) }
 
@@ -261,7 +260,7 @@ class parser {
     }
 
 
-    fn parse_constrs<T: copy>(pser: fn(parser) -> @constr_general<T>) ->
+    fn parse_constrs<T: copy>(pser: fn(parser<L>) -> @constr_general<T>) ->
         [@constr_general<T>] {
         let mut constrs: [@constr_general<T>] = [];
         loop {
@@ -436,10 +435,12 @@ class parser {
         } else { infer(self.get_id()) }
     }
 
-    fn parse_capture_item_or(parse_arg_fn: fn(parser) -> arg_or_capture_item)
+    fn parse_capture_item_or
+        (parse_arg_fn: fn(parser<L>) -> arg_or_capture_item)
         -> arg_or_capture_item {
 
-        fn parse_capture_item(p:parser, is_move: bool) -> capture_item {
+        fn parse_capture_item<L: lexer>(p: parser<L>, is_move: bool)
+            -> capture_item {
             let sp = mk_sp(p.span.lo, p.span.hi);
             let ident = p.parse_ident();
             @{id: p.get_id(), is_move: is_move, name: ident, span: sp}
@@ -566,8 +567,8 @@ class parser {
     }
 
     fn parse_path_without_tps_(
-        parse_ident: fn(parser) -> ident,
-        parse_last_ident: fn(parser) -> ident) -> @path {
+        parse_ident: fn(parser<L>) -> ident,
+        parse_last_ident: fn(parser<L>) -> ident) -> @path {
 
         let lo = self.span.lo;
         let global = self.eat(token::MOD_SEP);
@@ -1551,7 +1552,8 @@ class parser {
     }
 
     fn parse_stmt(+first_item_attrs: [attribute]) -> @stmt {
-        fn check_expected_item(p: parser, current_attrs: [attribute]) {
+        fn check_expected_item<L: lexer>
+            (p: parser<L>, current_attrs: [attribute]) {
             // If we have attributes then we should have an item
             if vec::is_not_empty(current_attrs) {
                 p.fatal("expected item");
@@ -1609,7 +1611,8 @@ class parser {
 
     fn parse_inner_attrs_and_block(parse_attrs: bool) -> ([attribute], blk) {
 
-        fn maybe_parse_inner_attrs_and_next(p: parser, parse_attrs: bool) ->
+        fn maybe_parse_inner_attrs_and_next<L: lexer>
+            (p: parser<L>, parse_attrs: bool) ->
             {inner: [attribute], next: [attribute]} {
             if parse_attrs {
                 p.parse_inner_attrs_and_next()
@@ -1733,7 +1736,7 @@ class parser {
 
     // FIXME Remove after snapshot
     fn parse_old_skool_capture_clause() -> [capture_item] {
-        fn expect_opt_trailing_semi(p: parser) {
+        fn expect_opt_trailing_semi<L: lexer>(p: parser<L>) {
             if !p.eat(token::SEMI) {
                 if p.token != token::RBRACKET {
                     p.fatal("expecting ; or ]");
@@ -1741,7 +1744,8 @@ class parser {
             }
         }
 
-        fn eat_ident_list(p: parser, is_move: bool) -> [capture_item] {
+        fn eat_ident_list<L: lexer>(p: parser<L>, is_move: bool)
+            -> [capture_item] {
             let mut res = [];
             loop {
                 alt p.token {
@@ -1781,7 +1785,7 @@ class parser {
     }
 
     fn parse_fn_decl(purity: purity,
-                     parse_arg_fn: fn(parser) -> arg_or_capture_item)
+                     parse_arg_fn: fn(parser<L>) -> arg_or_capture_item)
         -> (fn_decl, capture_clause) {
 
         let args_or_capture_items: [arg_or_capture_item] =
@@ -1895,7 +1899,7 @@ class parser {
     //    impl name/&<T> of to_str for [T] { ... }
     //    impl name/&<T> for [T] { ... }
     fn parse_item_impl() -> item_info {
-        fn wrap_path(p: parser, pt: @path) -> @ty {
+        fn wrap_path<L: lexer>(p: parser<L>, pt: @path) -> @ty {
             @{id: p.get_id(), node: ty_path(pt, p.get_id()), span: pt.span}
         }
         let mut (ident, rp, tps) = {
@@ -2575,6 +2579,311 @@ class parser {
         }
         ret cdirs;
     }
+
+    // move these back to attr.rs after #2445 is fixed
+    // ----------
+    fn parse_outer_attrs_or_ext(first_item_attrs: [ast::attribute])
+        -> attr_or_ext
+    {
+        let expect_item_next = vec::is_not_empty(first_item_attrs);
+        if self.token == token::POUND {
+            let lo = self.span.lo;
+            if self.look_ahead(1u) == token::LBRACKET {
+                self.bump();
+                let first_attr =
+                    self.parse_attribute_naked(ast::attr_outer, lo);
+                ret some(left([first_attr] + self.parse_outer_attributes()));
+            } else if !(self.look_ahead(1u) == token::LT
+                        || self.look_ahead(1u) == token::LBRACKET
+                        || self.look_ahead(1u) == token::POUND
+                        || expect_item_next) {
+                self.bump();
+                ret some(right(self.parse_syntax_ext_naked(lo)));
+            } else { ret none; }
+        } else { ret none; }
+    }
+
+    // Parse attributes that appear before an item
+    fn parse_outer_attributes() -> [ast::attribute] {
+        let mut attrs: [ast::attribute] = [];
+        while self.token == token::POUND
+            && self.look_ahead(1u) == token::LBRACKET {
+            attrs += [self.parse_attribute(ast::attr_outer)];
+        }
+        ret attrs;
+    }
+
+    fn parse_attribute(style: ast::attr_style) -> ast::attribute {
+        let lo = self.span.lo;
+        self.expect(token::POUND);
+        ret self.parse_attribute_naked(style, lo);
+    }
+
+    fn parse_attribute_naked(style: ast::attr_style, lo: uint) ->
+        ast::attribute {
+        self.expect(token::LBRACKET);
+        let meta_item = self.parse_meta_item();
+        self.expect(token::RBRACKET);
+        let mut hi = self.span.hi;
+        ret spanned(lo, hi, {style: style, value: *meta_item});
+    }
+
+    // Parse attributes that appear after the opening of an item, each
+    // terminated by a semicolon. In addition to a vector of inner attributes,
+    // this function also returns a vector that may contain the first outer
+    // attribute of the next item (since we can't know whether the attribute
+    // is an inner attribute of the containing item or an outer attribute of
+    // the first contained item until we see the semi).
+    fn parse_inner_attrs_and_next() ->
+        {inner: [ast::attribute], next: [ast::attribute]} {
+        let mut inner_attrs: [ast::attribute] = [];
+        let mut next_outer_attrs: [ast::attribute] = [];
+        while self.token == token::POUND {
+            if self.look_ahead(1u) != token::LBRACKET {
+                // This is an extension
+                break;
+            }
+            let attr = self.parse_attribute(ast::attr_inner);
+            if self.token == token::SEMI {
+                self.bump();
+                inner_attrs += [attr];
+            } else {
+                // It's not really an inner attribute
+                let outer_attr =
+                    spanned(attr.span.lo, attr.span.hi,
+                            {style: ast::attr_outer, value: attr.node.value});
+                next_outer_attrs += [outer_attr];
+                break;
+            }
+        }
+        ret {inner: inner_attrs, next: next_outer_attrs};
+    }
+
+    fn parse_meta_item() -> @ast::meta_item {
+        let lo = self.span.lo;
+        let ident = self.parse_ident();
+        alt self.token {
+          token::EQ {
+            self.bump();
+            let lit = self.parse_lit();
+            let mut hi = self.span.hi;
+            ret @spanned(lo, hi, ast::meta_name_value(ident, lit));
+          }
+          token::LPAREN {
+            let inner_items = self.parse_meta_seq();
+            let mut hi = self.span.hi;
+            ret @spanned(lo, hi, ast::meta_list(ident, inner_items));
+          }
+          _ {
+            let mut hi = self.span.hi;
+            ret @spanned(lo, hi, ast::meta_word(ident));
+          }
+        }
+    }
+
+    fn parse_meta_seq() -> [@ast::meta_item] {
+        ret self.parse_seq(token::LPAREN, token::RPAREN,
+                           seq_sep(token::COMMA),
+                           {|p| p.parse_meta_item()}).node;
+    }
+
+    fn parse_optional_meta() -> [@ast::meta_item] {
+        alt self.token { token::LPAREN { ret self.parse_meta_seq(); }
+                         _ { ret []; } }
+    }
+
+    // move these back to common.rs after #2445 is fixed
+    // ----------
+    fn unexpected_last(t: token::token) -> ! {
+        self.span_fatal(self.last_span, "unexpected token: '"
+                        + token_to_str(self.reader, t) + "'");
+    }
+
+    fn unexpected() -> ! {
+        self.fatal("unexpected token: '"
+                   + token_to_str(self.reader, self.token) + "'");
+    }
+
+    fn expect(t: token::token) {
+        if self.token == t {
+            self.bump();
+        } else {
+            let mut s: str = "expecting '";
+            s += token_to_str(self.reader, t);
+            s += "' but found '";
+            s += token_to_str(self.reader, self.token);
+            self.fatal(s + "'");
+        }
+    }
+
+    fn parse_ident() -> ast::ident {
+        alt self.token {
+          token::IDENT(i, _) { self.bump(); ret self.get_str(i); }
+          _ { self.fatal("expecting ident, found "
+                      + token_to_str(self.reader, self.token)); }
+        }
+    }
+
+    fn parse_path_list_ident() -> ast::path_list_ident {
+        let lo = self.span.lo;
+        let ident = self.parse_ident();
+        let hi = self.span.hi;
+        ret spanned(lo, hi, {name: ident, id: self.get_id()});
+    }
+
+    fn parse_value_ident() -> ast::ident {
+        self.check_restricted_keywords();
+        ret self.parse_ident();
+    }
+
+    fn eat(tok: token::token) -> bool {
+        ret if self.token == tok { self.bump(); true } else { false };
+    }
+
+    // A sanity check that the word we are asking for is a known keyword
+    fn require_keyword(word: str) {
+        if !self.keywords.contains_key(word) {
+            self.bug(#fmt("unknown keyword: %s", word));
+        }
+    }
+
+    fn token_is_keyword(word: str, tok: token::token) -> bool {
+        self.require_keyword(word);
+        alt tok {
+          token::IDENT(sid, false) { str::eq(word, self.get_str(sid)) }
+          _ { false }
+        }
+    }
+
+    fn is_keyword(word: str) -> bool {
+        self.token_is_keyword(word, self.token)
+    }
+
+    fn eat_keyword(word: str) -> bool {
+        self.require_keyword(word);
+        alt self.token {
+          token::IDENT(sid, false) {
+            if str::eq(word, self.get_str(sid)) {
+                self.bump();
+                ret true;
+            } else { ret false; }
+          }
+          _ { ret false; }
+        }
+    }
+
+    fn expect_keyword(word: str) {
+        self.require_keyword(word);
+        if !self.eat_keyword(word) {
+            self.fatal("expecting " + word + ", found " +
+                    token_to_str(self.reader, self.token));
+        }
+    }
+
+    fn is_restricted_keyword(word: str) -> bool {
+        self.restricted_keywords.contains_key(word)
+    }
+
+    fn check_restricted_keywords() {
+        alt self.token {
+          token::IDENT(_, false) {
+            let w = token_to_str(self.reader, self.token);
+            self.check_restricted_keywords_(w);
+          }
+          _ { }
+        }
+    }
+
+    fn check_restricted_keywords_(w: ast::ident) {
+        if self.is_restricted_keyword(w) {
+            self.fatal("found `" + w + "` in restricted position");
+        }
+    }
+
+    fn expect_gt() {
+        if self.token == token::GT {
+            self.bump();
+        } else if self.token == token::BINOP(token::SHR) {
+            self.swap(token::GT, self.span.lo + 1u, self.span.hi);
+        } else {
+            let mut s: str = "expecting ";
+            s += token_to_str(self.reader, token::GT);
+            s += ", found ";
+            s += token_to_str(self.reader, self.token);
+            self.fatal(s);
+        }
+    }
+
+
+    fn parse_seq_to_before_gt<T: copy>(sep: option<token::token>,
+                                       f: fn(parser<L>) -> T) -> [T] {
+        let mut first = true;
+        let mut v = [];
+        while self.token != token::GT
+            && self.token != token::BINOP(token::SHR) {
+            alt sep {
+              some(t) { if first { first = false; }
+                       else { self.expect(t); } }
+              _ { }
+            }
+            v += [f(self)];
+        }
+
+        ret v;
+    }
+
+    fn parse_seq_to_gt<T: copy>(sep: option<token::token>,
+                                f: fn(parser<L>) -> T) -> [T] {
+        let v = self.parse_seq_to_before_gt(sep, f);
+        self.expect_gt();
+
+        ret v;
+    }
+
+    fn parse_seq_lt_gt<T: copy>(sep: option<token::token>,
+                                f: fn(parser<L>) -> T) -> spanned<[T]> {
+        let lo = self.span.lo;
+        self.expect(token::LT);
+        let result = self.parse_seq_to_before_gt::<T>(sep, f);
+        let hi = self.span.hi;
+        self.expect_gt();
+        ret spanned(lo, hi, result);
+    }
+
+    fn parse_seq_to_end<T: copy>(ket: token::token, sep: seq_sep,
+                                 f: fn(parser<L>) -> T) -> [T] {
+        let val = self.parse_seq_to_before_end(ket, sep, f);
+        self.bump();
+        ret val;
+    }
+
+
+    fn parse_seq_to_before_end<T: copy>(ket: token::token, sep: seq_sep,
+                                        f: fn(parser<L>) -> T) -> [T] {
+        let mut first: bool = true;
+        let mut v: [T] = [];
+        while self.token != ket {
+            alt sep.sep {
+              some(t) { if first { first = false; }
+                        else { self.expect(t); } }
+              _ { }
+            }
+            if sep.trailing_opt && self.token == ket { break; }
+            v += [f(self)];
+        }
+        ret v;
+    }
+
+    fn parse_seq<T: copy>(bra: token::token, ket: token::token, sep: seq_sep,
+                          f: fn(parser<L>) -> T) -> spanned<[T]> {
+        let lo = self.span.lo;
+        self.expect(bra);
+        let result = self.parse_seq_to_before_end::<T>(ket, sep, f);
+        let hi = self.span.hi;
+        self.bump();
+        ret spanned(lo, hi, result);
+    }
+    // ----------
 }
 //
 // Local Variables:

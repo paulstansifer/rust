@@ -7,15 +7,16 @@ type ctx =
     @{sess: parse::parse_sess,
       cfg: ast::crate_cfg};
 
-fn eval_crate_directives(cx: ctx, cdirs: [@ast::crate_directive], prefix: str,
-                         &view_items: [@ast::view_item],
+fn eval_crate_directives(cx: ctx, cdirs: [@ast::crate_directive],
+                         prefix: str, &view_items: [@ast::view_item],
                          &items: [@ast::item]) {
     for cdirs.each {|sub_cdir|
         eval_crate_directive(cx, sub_cdir, prefix, view_items, items);
     }
 }
 
-fn eval_crate_directives_to_mod(cx: ctx, cdirs: [@ast::crate_directive],
+fn eval_crate_directives_to_mod(cx: ctx,
+                                cdirs: [@ast::crate_directive],
                                 prefix: str, suffix: option<str>)
     -> (ast::_mod, [ast::attribute]) {
     #debug("eval crate prefix: %s", prefix);
@@ -69,7 +70,7 @@ fn parse_companion_mod(cx: ctx, prefix: str, suffix: option<str>)
         let first_item_outer_attrs = inner_attrs.next;
         let m0 = p0.parse_mod_items(token::EOF, first_item_outer_attrs);
         cx.sess.chpos = p0.reader.chpos;
-        cx.sess.byte_pos = cx.sess.byte_pos + p0.reader.pos;
+        cx.sess.byte_pos = cx.sess.byte_pos + p0.reader.bpos();
         ret (m0.view_items, m0.items, inner_attrs.inner);
     } else {
         ret ([], [], []);
@@ -85,8 +86,8 @@ fn cdir_path_opt(id: str, attrs: [ast::attribute]) -> str {
     }
 }
 
-fn eval_crate_directive(cx: ctx, cdir: @ast::crate_directive, prefix: str,
-                        &view_items: [@ast::view_item],
+fn eval_crate_directive(cx: ctx, cdir: @ast::crate_directive,
+                        prefix: str, &view_items: [@ast::view_item],
                         &items: [@ast::item]) {
     alt cdir.node {
       ast::cdir_src_mod(id, attrs) {
@@ -106,7 +107,7 @@ fn eval_crate_directive(cx: ctx, cdir: @ast::crate_directive, prefix: str,
                            ast::item_mod(m0), ast::public, mod_attrs);
         // Thread defids, chpos and byte_pos through the parsers
         cx.sess.chpos = p0.reader.chpos;
-        cx.sess.byte_pos = cx.sess.byte_pos + p0.reader.pos;
+        cx.sess.byte_pos = cx.sess.byte_pos + p0.reader.bpos();
         items += [i];
       }
       ast::cdir_dir_mod(id, cdirs, attrs) {

@@ -2,7 +2,21 @@ import util::interner;
 import util::interner::intern;
 import diagnostic;
 
-export reader, new_reader, next_token, is_whitespace;
+export lexer, reader, new_reader, is_whitespace, nextch;
+
+
+iface lexer {
+    fn is_eof() -> bool;
+    fn get_str_from(uint) -> str;
+    fn bump();
+    fn next_token() -> {tok: token::token, chpos: uint, bpos: uint};
+    fn fatal(str) -> !;
+    fn chpos() -> uint;
+    fn bpos() -> uint;
+    fn interner() -> @interner::interner<str>;
+}
+
+
 
 type reader = @{
     span_diagnostic: diagnostic::span_handler,
@@ -15,17 +29,12 @@ type reader = @{
     interner: @interner::interner<str>
 };
 
-impl reader for reader {
+impl of lexer for reader {
     fn is_eof() -> bool { self.curr == -1 as char }
     fn get_str_from(start: uint) -> str unsafe {
         // I'm pretty skeptical about this subtraction. What if there's a
         // multi-byte character before the mark?
         ret str::slice(*self.src, start - 1u, self.pos - 1u);
-    }
-    fn next() -> char {
-        if self.pos < (*self.src).len() {
-            ret str::char_at(*self.src, self.pos);
-        } else { ret -1 as char; }
     }
     fn bump() {
         if self.pos < (*self.src).len() {
@@ -46,11 +55,31 @@ impl reader for reader {
             }
         }
     }
+    fn next_token() -> {tok: token::token, chpos: uint, bpos: uint} {
+        consume_whitespace_and_comments(self);
+        let start_chpos = self.chpos;
+        let start_bpos = self.pos;
+        let tok = if self.is_eof() {
+            token::EOF
+        } else {
+            next_token_inner(self)
+        };
+        ret {tok: tok, chpos: start_chpos, bpos: start_bpos};
+    }
     fn fatal(m: str) -> ! {
         self.span_diagnostic.span_fatal(
             ast_util::mk_sp(self.chpos, self.chpos),
             m)
     }
+    fn chpos() -> uint { self.chpos }
+    fn bpos() -> uint { self.pos }
+    fn interner() -> @interner::interner<str> { self.interner}
+}
+
+fn nextch(rdr: reader) -> char {
+    if rdr.pos < (*rdr.src).len() {
+        ret str::char_at(*rdr.src, rdr.pos);
+    } else { ret -1 as char; }
 }
 
 fn new_reader(span_diagnostic: diagnostic::span_handler,
@@ -109,7 +138,7 @@ fn consume_whitespace_and_comments(rdr: reader) {
 
 fn consume_any_line_comment(rdr: reader) {
     if rdr.curr == '/' {
-        alt rdr.next() {
+        alt nextch(rdr) {
           '/' {
             while rdr.curr != '\n' && !rdr.is_eof() { rdr.bump(); }
             // Restart whitespace munch.
@@ -120,7 +149,7 @@ fn consume_any_line_comment(rdr: reader) {
           _ { ret; }
         }
     } else if rdr.curr == '#' {
-        if rdr.next() == '!' {
+        if nextch(rdr) == '!' {
             let cmap = codemap::new_codemap();
             (*cmap).files.push(rdr.filemap);
             let loc = codemap::lookup_char_pos_adj(cmap, rdr.chpos);
@@ -136,12 +165,12 @@ fn consume_block_comment(rdr: reader) {
     let mut level: int = 1;
     while level > 0 {
         if rdr.is_eof() { rdr.fatal("unterminated block comment"); }
-        if rdr.curr == '/' && rdr.next() == '*' {
+        if rdr.curr == '/' && nextch(rdr) == '*' {
             rdr.bump();
             rdr.bump();
             level += 1;
         } else {
-            if rdr.curr == '*' && rdr.next() == '/' {
+            if rdr.curr == '*' && nextch(rdr) == '/' {
                 rdr.bump();
                 rdr.bump();
                 level -= 1;
@@ -187,7 +216,7 @@ fn scan_digits(rdr: reader, radix: uint) -> str {
 }
 
 fn scan_number(c: char, rdr: reader) -> token::token {
-    let mut num_str, base = 10u, c = c, n = rdr.next();
+    let mut num_str, base = 10u, c = c, n = nextch(rdr);
     if c == '0' && n == 'x' {
         rdr.bump();
         rdr.bump();
@@ -199,7 +228,7 @@ fn scan_number(c: char, rdr: reader) -> token::token {
     }
     num_str = scan_digits(rdr, base);
     c = rdr.curr;
-    rdr.next();
+    nextch(rdr);
     if c == 'u' || c == 'i' {
         let signed = c == 'i';
         let mut tp = {
@@ -213,7 +242,7 @@ fn scan_number(c: char, rdr: reader) -> token::token {
             tp = if signed { either::left(ast::ty_i8) }
                       else { either::right(ast::ty_u8) };
         }
-        n = rdr.next();
+        n = nextch(rdr);
         if c == '1' && n == '6' {
             rdr.bump();
             rdr.bump();
@@ -240,7 +269,7 @@ fn scan_number(c: char, rdr: reader) -> token::token {
         }
     }
     let mut is_float = false;
-    if rdr.curr == '.' && !(is_alpha(rdr.next()) || rdr.next() == '_') {
+    if rdr.curr == '.' && !(is_alpha(nextch(rdr)) || nextch(rdr) == '_') {
         is_float = true;
         rdr.bump();
         let dec_part = scan_digits(rdr, 10u);
@@ -256,7 +285,7 @@ fn scan_number(c: char, rdr: reader) -> token::token {
     if rdr.curr == 'f' {
         rdr.bump();
         c = rdr.curr;
-        n = rdr.next();
+        n = nextch(rdr);
         if c == '3' && n == '2' {
             rdr.bump();
             rdr.bump();
@@ -301,14 +330,6 @@ fn scan_numeric_escape(rdr: reader, n_hex_digits: uint) -> char {
     ret accum_int as char;
 }
 
-fn next_token(rdr: reader) -> {tok: token::token, chpos: uint, bpos: uint} {
-    consume_whitespace_and_comments(rdr);
-    let start_chpos = rdr.chpos;
-    let start_bpos = rdr.pos;
-    let tok = if rdr.is_eof() { token::EOF } else { next_token_inner(rdr) };
-    ret {tok: tok, chpos: start_chpos, bpos: start_bpos};
-}
-
 fn next_token_inner(rdr: reader) -> token::token {
     let mut accum_str = "";
     let mut c = rdr.curr;
@@ -326,7 +347,7 @@ fn next_token_inner(rdr: reader) -> token::token {
             c = rdr.curr;
         }
         if str::eq(accum_str, "_") { ret token::UNDERSCORE; }
-        let is_mod_name = c == ':' && rdr.next() == ':';
+        let is_mod_name = c == ':' && nextch(rdr) == ':';
 
         // FIXME: perform NFKC normalization here. (Issue #2253)
         ret token::IDENT(interner::intern::<str>(*rdr.interner,
@@ -353,7 +374,7 @@ fn next_token_inner(rdr: reader) -> token::token {
       ',' { rdr.bump(); ret token::COMMA; }
       '.' {
         rdr.bump();
-        if rdr.curr == '.' && rdr.next() == '.' {
+        if rdr.curr == '.' && nextch(rdr) == '.' {
             rdr.bump();
             rdr.bump();
             ret token::ELLIPSIS;
@@ -492,21 +513,21 @@ fn next_token_inner(rdr: reader) -> token::token {
                                                    accum_str));
       }
       '-' {
-        if rdr.next() == '>' {
+        if nextch(rdr) == '>' {
             rdr.bump();
             rdr.bump();
             ret token::RARROW;
         } else { ret binop(rdr, token::MINUS); }
       }
       '&' {
-        if rdr.next() == '&' {
+        if nextch(rdr) == '&' {
             rdr.bump();
             rdr.bump();
             ret token::ANDAND;
         } else { ret binop(rdr, token::AND); }
       }
       '|' {
-        alt rdr.next() {
+        alt nextch(rdr) {
           '|' { rdr.bump(); rdr.bump(); ret token::OROR; }
           _ { ret binop(rdr, token::OR); }
         }

@@ -17,7 +17,7 @@ import attr::parser_attr;
 import common::parser_common;
 import ast::node_id;
 import util::interner;
-import lexer::reader;
+import lexer::{reader,lexer};
 
 type parse_sess = @{
     cm: codemap::codemap,
@@ -44,13 +44,13 @@ fn parse_crate_from_crate_file(input: str, cfg: ast::crate_cfg,
                                sess: parse_sess) -> @ast::crate {
     let p = new_parser_from_file(sess, cfg, input, parser::CRATE_FILE);
     let lo = p.span.lo;
-    let prefix = path::dirname(p.reader.filemap.name);
+    let prefix = path::dirname(input);
     let leading_attrs = p.parse_inner_attrs_and_next();
     let crate_attrs = leading_attrs.inner;
     let first_cdir_attr = leading_attrs.next;
     let cdirs = p.parse_crate_directives(token::EOF, first_cdir_attr);
     sess.chpos = p.reader.chpos;
-    sess.byte_pos = sess.byte_pos + p.reader.pos;
+    sess.byte_pos = sess.byte_pos + p.reader.bpos();
     let cx =
         @{sess: sess,
           cfg: p.cfg};
@@ -71,17 +71,17 @@ fn parse_crate_from_source_file(input: str, cfg: ast::crate_cfg,
     let p = new_parser_from_file(sess, cfg, input, parser::SOURCE_FILE);
     let r = p.parse_crate_mod(cfg);
     sess.chpos = p.reader.chpos;
-    sess.byte_pos = sess.byte_pos + p.reader.pos;
+    sess.byte_pos = sess.byte_pos + p.reader.bpos();
     ret r;
 }
 
 fn parse_crate_from_source_str(name: str, source: @str, cfg: ast::crate_cfg,
                                sess: parse_sess) -> @ast::crate {
-    let p = new_parser_from_source_str(
-        sess, cfg, name, codemap::fss_none, source);
+    let p = new_parser_from_source_str(sess, cfg, name, codemap::fss_none,
+                                       source);
     let r = p.parse_crate_mod(cfg);
     sess.chpos = p.reader.chpos;
-    sess.byte_pos = sess.byte_pos + p.reader.pos;
+    sess.byte_pos = sess.byte_pos + p.reader.bpos();
     ret r;
 }
 
@@ -91,7 +91,7 @@ fn parse_expr_from_source_str(name: str, source: @str, cfg: ast::crate_cfg,
         sess, cfg, name, codemap::fss_none, source);
     let r = p.parse_expr();
     sess.chpos = p.reader.chpos;
-    sess.byte_pos = sess.byte_pos + p.reader.pos;
+    sess.byte_pos = sess.byte_pos + p.reader.bpos();
     ret r;
 }
 
@@ -102,11 +102,11 @@ fn parse_item_from_source_str(name: str, source: @str, cfg: ast::crate_cfg,
         sess, cfg, name, codemap::fss_none, source);
     let r = p.parse_item(attrs, vis);
     sess.chpos = p.reader.chpos;
-    sess.byte_pos = sess.byte_pos + p.reader.pos;
+    sess.byte_pos = sess.byte_pos + p.reader.bpos();
     ret r;
 }
 
-fn parse_from_source_str<T>(f: fn (p: parser) -> T,
+fn parse_from_source_str<T>(f: fn (p: parser<reader>) -> T,
                             name: str, ss: codemap::file_substr,
                             source: @str, cfg: ast::crate_cfg,
                             sess: parse_sess)
@@ -118,7 +118,7 @@ fn parse_from_source_str<T>(f: fn (p: parser) -> T,
         p.reader.fatal("expected end-of-string");
     }
     sess.chpos = p.reader.chpos;
-    sess.byte_pos = sess.byte_pos + p.reader.pos;
+    sess.byte_pos = sess.byte_pos + p.reader.bpos();
     ret r;
 }
 
@@ -132,7 +132,7 @@ fn next_node_id(sess: parse_sess) -> node_id {
 
 fn new_parser_from_source_str(sess: parse_sess, cfg: ast::crate_cfg,
                               name: str, ss: codemap::file_substr,
-                              source: @str) -> parser {
+                              source: @str) -> parser<reader> {
     let ftype = parser::SOURCE_FILE;
     let filemap = codemap::new_filemap_w_substr
         (name, ss, source, sess.chpos, sess.byte_pos);
@@ -145,7 +145,7 @@ fn new_parser_from_source_str(sess: parse_sess, cfg: ast::crate_cfg,
 
 fn new_parser_from_file(sess: parse_sess, cfg: ast::crate_cfg, path: str,
                         ftype: parser::file_type) ->
-   parser {
+   parser<reader> {
     let src = alt io::read_whole_file_str(path) {
       result::ok(src) {
         // FIXME: This copy is unfortunate (#2319)
@@ -155,8 +155,7 @@ fn new_parser_from_file(sess: parse_sess, cfg: ast::crate_cfg, path: str,
         sess.span_diagnostic.handler().fatal(e)
       }
     };
-    let filemap = codemap::new_filemap(path, src,
-                                       sess.chpos, sess.byte_pos);
+    let filemap = codemap::new_filemap(path, src, sess.chpos, sess.byte_pos);
     sess.cm.files.push(filemap);
     let itr = @interner::mk(str::hash, str::eq);
     let rdr = lexer::new_reader(sess.span_diagnostic, filemap, itr);

@@ -1,7 +1,7 @@
 import io::reader_util;
 import io::println;//XXXXXXXXxxx
 import util::interner;
-import lexer::{ reader, new_reader, next_token, is_whitespace };
+import lexer::{ reader, nextch, new_reader, is_whitespace };
 
 export cmnt;
 export lit;
@@ -68,7 +68,7 @@ fn read_line_comments(rdr: reader, code_to_the_left: bool) -> cmnt {
     #debug(">>> line comments");
     let p = rdr.chpos;
     let mut lines: [str] = [];
-    while rdr.curr == '/' && rdr.next() == '/' {
+    while rdr.curr == '/' && nextch(rdr) == '/' {
         let line = read_one_line_comment(rdr);
         log(debug, line);
         lines += [line];
@@ -117,13 +117,13 @@ fn read_block_comment(rdr: reader, code_to_the_left: bool) -> cmnt {
             rdr.bump();
         } else {
             str::push_char(curr_line, rdr.curr);
-            if rdr.curr == '/' && rdr.next() == '*' {
+            if rdr.curr == '/' && nextch(rdr) == '*' {
                 rdr.bump();
                 rdr.bump();
                 curr_line += "*";
                 level += 1;
             } else {
-                if rdr.curr == '*' && rdr.next() == '/' {
+                if rdr.curr == '*' && nextch(rdr) == '/' {
                     rdr.bump();
                     rdr.bump();
                     curr_line += "/";
@@ -145,18 +145,18 @@ fn read_block_comment(rdr: reader, code_to_the_left: bool) -> cmnt {
 }
 
 fn peeking_at_comment(rdr: reader) -> bool {
-    ret ((rdr.curr == '/' && rdr.next() == '/') ||
-         (rdr.curr == '/' && rdr.next() == '*')) ||
-        (rdr.curr == '#' && rdr.next() == '!');
+    ret ((rdr.curr == '/' && nextch(rdr) == '/') ||
+         (rdr.curr == '/' && nextch(rdr) == '*')) ||
+         (rdr.curr == '#' && nextch(rdr) == '!');
 }
 
 fn consume_comment(rdr: reader, code_to_the_left: bool, &comments: [cmnt]) {
     #debug(">>> consume comment");
-    if rdr.curr == '/' && rdr.next() == '/' {
+    if rdr.curr == '/' && nextch(rdr) == '/' {
         comments += [read_line_comments(rdr, code_to_the_left)];
-    } else if rdr.curr == '/' && rdr.next() == '*' {
+    } else if rdr.curr == '/' && nextch(rdr) == '*' {
         comments += [read_block_comment(rdr, code_to_the_left)];
-    } else if rdr.curr == '#' && rdr.next() == '!' {
+    } else if rdr.curr == '#' && nextch(rdr) == '!' {
         comments += [read_shebang_comment(rdr, code_to_the_left)];
     } else { fail; }
     #debug("<<< consume comment");
@@ -189,7 +189,7 @@ fn gather_comments_and_literals(span_diagnostic: diagnostic::span_handler,
             }
             break;
         }
-        let tok = next_token(rdr);
+        let tok = rdr.next_token();
         if token::is_lit(tok.tok) {
             let s = rdr.get_str_from(tok.bpos);
             literals += [{lit: s, pos: tok.chpos}];
